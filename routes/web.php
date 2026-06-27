@@ -1,10 +1,14 @@
 <?php
 
+use App\Http\Controllers\Auth\EcosystemAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get('/auth/ecosystem', [EcosystemAuthController::class, 'handle'])
+    ->name('ecosystem.auth');
 
 Route::middleware([
     'auth:sanctum',
