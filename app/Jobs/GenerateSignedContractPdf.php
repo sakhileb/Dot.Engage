@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Contract;
 use App\Models\ContractVersion;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -18,53 +19,54 @@ class GenerateSignedContractPdf implements ShouldQueue
 
     public function __construct(public readonly Contract $contract) {}
 
-    /**
-     * Merge all collected signatures into a final signed PDF and store it
-     * as a new ContractVersion so the original is preserved.
-     *
-     * Full PDF manipulation requires a library such as FPDF or Snappy;
-     * this implementation records the version entry and stamps the
-     * contract as 'signed' — swap the placeholder with real PDF logic
-     * once a renderer is installed.
-     */
     public function handle(): void
     {
         if ($this->contract->status !== 'signed') {
-            Log::info('GenerateSignedContractPdf: contract ' . $this->contract->id . ' is not fully signed yet, skipping.');
+            Log::info('GenerateSignedContractPdf: contract ' . $this->contract->id . ' not fully signed, skipping.');
             return;
         }
 
-        $signatures = $this->contract->signatures()->with('user')->get();
+        $contract   = $this->contract->load(['creator', 'team', 'signatures.user', 'versions']);
+        $signatures = $contract->signatures;
 
         if ($signatures->isEmpty()) {
-            Log::warning('GenerateSignedContractPdf: no signatures found for contract ' . $this->contract->id);
+            Log::warning('GenerateSignedContractPdf: no signatures for contract ' . $contract->id);
             return;
         }
 
-        // Determine next version number.
-        $nextVersion = ($this->contract->versions()->max('version_number') ?? 0) + 1;
+        // Embed each signature image as a base64 data URI so DomPDF can render it.
+        $signaturesWithImages = $signatures->map(function ($sig) {
+            $imageData = null;
+            if ($sig->signature_image_path && Storage::disk('signatures')->exists($sig->signature_image_path)) {
+                $raw       = Storage::disk('signatures')->get($sig->signature_image_path);
+                $imageData = 'data:image/png;base64,' . base64_encode($raw);
+            }
+            return array_merge($sig->toArray(), ['image_data_uri' => $imageData]);
+        });
 
-        // Build a placeholder signed path; replace with actual PDF rendering.
-        $originalPath  = $this->contract->file_path;
-        $signedFilename = 'signed_v' . $nextVersion . '_' . basename((string) $originalPath);
-        $signedPath     = 'signed/' . $signedFilename;
+        $nextVersion = ($contract->versions()->max('version_number') ?? 0) + 1;
 
-        // Copy original as base (real impl would overlay signature images).
-        if (Storage::disk('contracts')->exists((string) $originalPath)) {
-            Storage::disk('contracts')->copy((string) $originalPath, $signedPath);
-        }
+        $pdf = Pdf::loadView('pdf.signed-contract', [
+            'contract'   => $contract,
+            'signatures' => $signaturesWithImages,
+            'signedAt'   => now(),
+        ])->setPaper('a4', 'portrait');
+
+        $pdfContent = $pdf->output();
+        $signedPath = 'signed/contract_' . $contract->id . '_v' . $nextVersion . '_signed.pdf';
+
+        Storage::disk('contracts')->put($signedPath, $pdfContent);
 
         ContractVersion::create([
-            'contract_id'    => $this->contract->id,
-            'created_by'     => $this->contract->created_by,
+            'contract_id'    => $contract->id,
+            'created_by'     => $contract->created_by,
             'version_number' => $nextVersion,
             'file_path'      => $signedPath,
-            'change_notes'   => 'Signed by all parties on ' . now()->toDateString(),
+            'change_notes'   => 'Signed by all parties — ' . now()->toFormattedDateString(),
         ]);
 
-        Log::info('GenerateSignedContractPdf: version ' . $nextVersion . ' created for contract ' . $this->contract->id);
+        Log::info('GenerateSignedContractPdf: v' . $nextVersion . ' created for contract ' . $contract->id);
 
-        // Trigger email delivery job.
-        DispatchSignedContractEmail::dispatch($this->contract);
+        DispatchSignedContractEmail::dispatch($contract->fresh());
     }
 }
