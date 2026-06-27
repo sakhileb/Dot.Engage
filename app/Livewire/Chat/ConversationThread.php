@@ -5,6 +5,7 @@ namespace App\Livewire\Chat;
 use App\Models\Conversation;
 use App\Models\Message;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class ConversationThread extends Component
@@ -13,15 +14,7 @@ class ConversationThread extends Component
     public int $page = 1;
     public bool $hasMorePages = false;
 
-    protected $listeners = ['conversation-selected' => 'switchConversation'];
-
-    public function mount(int $conversationId): void
-    {
-        $this->conversationId = $conversationId;
-        $this->authorize('view', Conversation::findOrFail($conversationId));
-        $this->markAsRead();
-    }
-
+    #[On('conversation-selected')]
     public function switchConversation(int $conversationId): void
     {
         $this->conversationId = $conversationId;
@@ -30,14 +23,22 @@ class ConversationThread extends Component
         $this->markAsRead();
     }
 
+    public function mount(int $conversationId): void
+    {
+        $this->conversationId = $conversationId;
+        $this->authorize('view', Conversation::findOrFail($conversationId));
+        $this->markAsRead();
+    }
+
+    #[On('echo-private:conversation.{conversationId},message.sent')]
+    public function messageReceived(array $data): void
+    {
+        $this->markAsRead();
+    }
+
     public function loadMore(): void
     {
         $this->page++;
-    }
-
-    public function refresh(): void
-    {
-        $this->markAsRead();
     }
 
     private function markAsRead(): void
@@ -53,7 +54,7 @@ class ConversationThread extends Component
         $conversation = Conversation::with('participants')
             ->findOrFail($this->conversationId);
 
-        $perPage  = 20;
+        $perPage   = 20;
         $paginator = Message::with(['sender', 'attachments'])
             ->where('conversation_id', $this->conversationId)
             ->latest()

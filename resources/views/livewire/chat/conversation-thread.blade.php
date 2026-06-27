@@ -1,4 +1,4 @@
-<div class="flex flex-col h-full" wire:poll.5s="refresh">
+<div class="flex flex-col h-full">
     {{-- Header --}}
     <div class="px-4 py-3 border-b border-gray-200 bg-white flex items-center gap-3">
         <div>

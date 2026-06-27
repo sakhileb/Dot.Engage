@@ -14,6 +14,10 @@ return [
     |
     */
 
+    'daily' => [
+        'api_key' => env('DAILY_API_KEY', ''),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

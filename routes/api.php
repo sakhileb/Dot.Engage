@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ContractPdfController;
 use App\Http\Controllers\Api\SignatureController;
+use App\Http\Controllers\Api\VideoJoinUrlController;
 use App\Http\Controllers\Api\VideoTokenController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -33,7 +34,11 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.contracts.pdf');
 
     // ── Video room token ─────────────────────────────────────────────────────
-    // POST  /api/video/token   — return Reverb credentials for a room
+    // POST  /api/video/token          — return Reverb credentials for a room
     Route::post('/video/token', VideoTokenController::class)
         ->name('api.video.token');
+
+    // GET   /api/video/{session}/join-url — return Daily.co join URL for a session
+    Route::get('/video/{session}/join-url', VideoJoinUrlController::class)
+        ->name('api.video.join-url');
 });
