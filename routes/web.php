@@ -18,7 +18,26 @@ Route::middleware([
 
     // ── Dashboard ───────────────────────────────────────────────────────────
     Route::get('/dashboard', function () {
-        return view('dashboard');
+        $stats = [
+            'total_contracts'       => \App\Models\Contract::count(),
+            'pending_signatures'    => \App\Models\Contract::where('status', 'pending')->count(),
+            'signed_contracts'      => \App\Models\Contract::where('status', 'signed')->count(),
+            'active_conversations'  => \App\Models\Conversation::whereNotNull('last_message_at')->count(),
+            'active_video_sessions' => \App\Models\VideoSession::whereIn('status', ['waiting', 'active'])->count(),
+        ];
+
+        $recentContracts = \App\Models\Contract::with('creator')
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        $activeConversations = \App\Models\Conversation::withCount('participants')
+            ->whereNotNull('last_message_at')
+            ->orderByDesc('last_message_at')
+            ->limit(5)
+            ->get();
+
+        return view('dashboard', compact('stats', 'recentContracts', 'activeConversations'));
     })->name('dashboard');
 
     // ── Contracts ───────────────────────────────────────────────────────────
